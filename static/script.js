@@ -8,6 +8,10 @@ const progressFill = document.getElementById('progress-fill');
 const progressLabel = document.getElementById('progress-label');
 const skillsSection = document.getElementById('skills-section');
 const tabsContainer = document.getElementById('tabs-container');
+const expWrapper = document.getElementById('exp-wrapper');
+const expTrigger = document.getElementById('exp-trigger');
+const expOptions = document.querySelectorAll('.custom-option');
+const hiddenExpInput = document.getElementById('experience-select');
 
 // Session state
 let currentFile = null;
@@ -318,3 +322,120 @@ function copyText(btn) {
     const text = btn.parentElement.querySelector('pre').textContent;
     navigator.clipboard.writeText(text).then(() => { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy'; }, 2000); });
 }
+
+// ─── JD Matcher Flow ───
+document.getElementById('btn-match-jd').addEventListener('click', async () => {
+    const jdText = document.getElementById('jd-input').value.trim();
+    
+    if (!cachedResumeText) {
+        alert("Please upload and analyze a resume first!");
+        return;
+    }
+    if (!jdText) {
+        alert("Please paste a Job Description!");
+        return;
+    }
+
+    const btn = document.getElementById('btn-match-jd');
+    const resultsEl = document.getElementById('jd-results');
+    
+    btn.disabled = true;
+    btn.textContent = "Analyzing Match...";
+    resultsEl.innerHTML = "";
+    resultsEl.classList.add('hidden');
+
+    const fd = new FormData();
+    fd.append('resume_text', cachedResumeText);
+    fd.append('jd_text', jdText);
+
+    try {
+        const res = await fetch('/match-jd', { method: 'POST', body: fd });
+        const data = await res.json();
+        
+        if (data.error) throw new Error(data.error);
+        renderJDMatchResults(data);
+    } catch (err) {
+        alert("Match analysis failed. Ensure server is running.");
+        console.error(err);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "Analyze Match";
+    }
+});
+
+function renderJDMatchResults(data) {
+    const el = document.getElementById('jd-results');
+    el.classList.remove('hidden');
+
+    const score = data.ats_score || 0;
+    const scoreColor = score >= 80 ? 'var(--green)' : score >= 60 ? 'var(--yellow)' : 'var(--red)';
+    
+    const matched = (data.matched_skills || []).map(s => `<span class="tag tag-green">${s}</span>`).join('');
+    const missing = (data.missing_skills || []).map(s => `<span class="tag tag-red">${s}</span>`).join('');
+    
+    const bullets = (data.bullet_suggestions || []).map(b => `
+        <div class="bullet-comparison" style="margin-top:0.5rem">
+            <p class="bullet-original">❌ ${b.current_bullet}</p>
+            <p class="bullet-rewritten">✅ <strong>Tailored:</strong> ${b.tailored_bullet}</p>
+        </div>`).join('');
+
+    el.innerHTML = `
+        <div class="card score-circle-wrap">
+            <div class="score-circle" style="border-color:${scoreColor};color:${scoreColor}">${score}%</div>
+            <h3 style="margin-top:1rem">ATS Match Score</h3>
+        </div>
+        
+        <div class="form-row" style="grid-template-columns: 1fr 1fr;">
+            <div class="card">
+                <h3>✅ Matched Keywords</h3>
+                <div class="tags">${matched || '<span class="tag">None detected</span>'}</div>
+            </div>
+            <div class="card">
+                <h3>⚠️ Missing Keywords</h3>
+                <div class="tags">${missing || '<span class="tag tag-green">None! You are a perfect match.</span>'}</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>🏢 Culture & Experience Fit</h3>
+            <p class="markdown-content">${data.culture_fit_analysis}</p>
+        </div>
+
+        ${bullets ? `
+        <div class="card">
+            <h3>📝 Resume Tailoring Suggestions</h3>
+            <p class="subtitle" style="margin-bottom:0.5rem">Update these bullets on your resume to increase your ATS score for this specific job.</p>
+            ${bullets}
+        </div>` : ''}
+    `;
+}
+// Toggle open/close
+expTrigger.addEventListener('click', function(e) {
+    e.stopPropagation(); // Prevent immediate closing
+    expWrapper.classList.toggle('open');
+});
+
+// Handle option selection
+expOptions.forEach(option => {
+    option.addEventListener('click', function() {
+        // Update UI text
+        expTrigger.querySelector('span').textContent = this.textContent;
+        
+        // Update hidden input for backend
+        hiddenExpInput.value = this.dataset.value;
+        
+        // Handle styling
+        expOptions.forEach(opt => opt.classList.remove('selected'));
+        this.classList.add('selected');
+        
+        // Close menu
+        expWrapper.classList.remove('open');
+    });
+});
+
+// Close dropdown when clicking outside of it
+document.addEventListener('click', function(e) {
+    if (!expWrapper.contains(e.target)) {
+        expWrapper.classList.remove('open');
+    }
+});

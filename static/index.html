@@ -32,15 +32,25 @@
 
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="experience-select">Experience Level</label>
-                        <select id="experience-select" class="text-input">
-                            <option value="Auto-Detect">Auto-Detect (AI Predicts)</option>
-                            <option value="Internship">Internship</option>
-                            <option value="Entry Level / Junior">Entry Level / Junior</option>
-                            <option value="Mid-Level">Mid-Level</option>
-                            <option value="Senior / Lead">Senior / Lead</option>
-                        </select>
-                    </div>
+    <label>Experience Level</label>
+    
+    <div class="custom-select-wrapper" id="exp-wrapper">
+        <div class="custom-select-trigger" id="exp-trigger">
+            <span>Auto-Detect (AI Predicts)</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </div>
+        
+        <div class="custom-options">
+            <span class="custom-option selected" data-value="Auto-Detect">Auto-Detect (AI Predicts)</span>
+            <span class="custom-option" data-value="Internship">Internship</span>
+            <span class="custom-option" data-value="Entry Level / Junior">Entry Level / Junior</span>
+            <span class="custom-option" data-value="Mid-Level">Mid-Level</span>
+            <span class="custom-option" data-value="Senior / Lead">Senior / Lead</span>
+        </div>
+    </div>
+
+    <input type="hidden" id="experience-select" value="Auto-Detect">
+</div>
                     <div class="form-group">
                         <label for="role-input">Target Role (Optional)</label>
                         <input type="text" id="role-input" placeholder="e.g. Data Scientist" class="text-input">
@@ -76,6 +86,7 @@
                     <button class="tab active" data-tab="jobs">💼 Job Matches</button>
                     <button class="tab" data-tab="roast">📝 Resume Analysis</button>
                     <button class="tab" data-tab="interview">🎯 Interview Prep</button>
+                    <button class="tab" data-tab="jd-match">🎯 JD Matcher</button>
                 </div>
 
                 <!-- TAB 1: Job Matches -->
@@ -95,7 +106,20 @@
                     </div>
                     <div id="roast-results" class="hidden"></div>
                 </div>
+                
+                <div class="tab-panel" id="tab-jd-match">
+    <div class="card">
+        <h3>🎯 Resume vs. Job Description</h3>
+        <p class="subtitle" style="margin-bottom:1rem">Paste a job description to see how well you match and what keywords you need to add.</p>
+        
+        <div class="form-group">
+            <textarea id="jd-input" class="text-input" placeholder="Paste the full Job Description here..." style="min-height: 150px; resize: vertical;"></textarea>
+        </div>
+        <button class="btn btn-primary" id="btn-match-jd" style="margin-top: 1rem;">Analyze Match</button>
+    </div>
 
+    <div id="jd-results" class="hidden"></div>
+</div>
                 <!-- TAB 3: Interview Prep -->
                 <div class="tab-panel" id="tab-interview">
                     <div id="interview-loading" class="tab-loading">

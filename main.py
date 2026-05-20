@@ -13,12 +13,23 @@ from utils.job_search import fetch_jobs
 from utils.job_matcher import match_and_rank
 from utils.resume_roaster import roast_resume
 from utils.interview_coach import generate_interview_prep, evaluate_answer
+from utils.jd_matcher import match_resume_to_jd
 
 app = FastAPI()
 
 # Mount the static directory
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+@app.post("/match-jd")
+async def match_jd_endpoint(
+    resume_text: str = Form(...),
+    jd_text: str = Form(...)
+):
+    if not resume_text or not jd_text:
+        return {"error": "Both resume text and job description are required."}
+        
+    result = match_resume_to_jd(resume_text, jd_text)
+    return result
 
 @app.get("/", response_class=HTMLResponse)
 async def read_index():
