@@ -9,7 +9,7 @@ import os
 from utils.pdf_parser import extract_text_from_pdf
 from utils.skill_extractor import extract_skills
 from utils.ai_feedback import get_ai_feedback
-from utils.job_fetcher import fetch_jobs
+from utils.job_search import fetch_jobs
 from utils.job_matcher import match_and_rank
 from utils.resume_roaster import roast_resume
 from utils.interview_coach import generate_interview_prep, evaluate_answer
