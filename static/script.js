@@ -154,7 +154,8 @@ function renderJobsTab(data) {
             </div>
             ${reasons ? `<div class="match-section"><p class="section-label">✅ Why you fit</p><ul class="match-list">${reasons}</ul></div>` : ''}
             ${gaps ? `<div class="gaps-section"><p class="section-label">⚠️ Skill gaps</p><ul class="gaps-list">${gaps}</ul></div>` : ''}
-            <a href="${job.url}" target="_blank" rel="noopener noreferrer" class="apply-btn">Apply Now →</a>`;
+            <a href="${job.link || job.url}" target="_blank" rel="noopener noreferrer" class="apply-btn">Apply Now →</a>
+        `;
         jobsList.appendChild(div);
     });
 }

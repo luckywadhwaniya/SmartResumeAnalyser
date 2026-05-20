@@ -53,12 +53,15 @@ async def analyze_resume(
         feedback_text = feedback_data.get("feedback", "No feedback generated.")
         predicted_level = feedback_data.get("predicted_level", experience_level)
 
-        # 4. Fetch real jobs
+        # 4. Fetch real jobs using Phase 2 Smart Queries
         roles_to_search = suggested_roles if suggested_roles else (
             [clean_role] if clean_role else ["Software Engineer"]
         )
         clean_location = location.strip() if location else "India"
-        raw_jobs = fetch_jobs(roles_to_search, clean_location, extracted_skills)
+        
+        # CHANGED: Now passing extracted_skills into the search engine
+        from utils.job_search import fetch_jobs
+        raw_jobs = fetch_jobs(roles_to_search, extracted_skills, predicted_level, clean_location)
 
         # 5. LLM-powered matching & ranking
         level_for_matching = predicted_level if predicted_level != "Auto-Detect" else "Entry Level"
