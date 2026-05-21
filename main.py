@@ -18,7 +18,7 @@ from utils.jd_matcher import match_resume_to_jd
 app = FastAPI()
 
 # Mount the static directory
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# //app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.post("/match-jd")
 async def match_jd_endpoint(
