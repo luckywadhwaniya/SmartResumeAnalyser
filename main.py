@@ -5,6 +5,11 @@ from typing import Optional
 import uvicorn
 import shutil
 import os
+from motor.motor_asyncio import AsyncIOMotorClient
+from pydantic import BaseModel
+from typing import Dict, Any
+from fastapi import Depends
+from utils.auth import get_password_hash, verify_password, create_access_token, verify_token
 
 from utils.pdf_parser import extract_text_from_pdf
 from utils.skill_extractor import extract_skills
@@ -16,7 +21,23 @@ from utils.interview_coach import generate_interview_prep, evaluate_answer
 from utils.jd_matcher import match_resume_to_jd
 
 app = FastAPI()
+# --- MONGODB SETUP ---
+# Replace with your actual MongoDB Atlas connection string
+MONGO_URL = "mongodb+srv://luckywadhwaniya_db_user:PW55ZEE9JtMvVNuF@cluster0.uzgganh.mongodb.net/?appName=Cluster0"
 
+client = AsyncIOMotorClient(MONGO_URL)
+db = client.resume_analyzer_db
+users_collection = db.get_collection("users")
+history_collection = db.get_collection("analysis_history")
+
+# --- PYDANTIC MODELS FOR DATABASE ---
+class UserCredentials(BaseModel):
+    email: str
+    password: str
+
+class SaveAnalysisRequest(BaseModel):
+    target_role: str
+    results_data: Dict[str, Any]
 # Mount the static directory
 # //app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -35,6 +56,63 @@ async def match_jd_endpoint(
 async def read_index():
     return FileResponse("static/index.html")
 
+# ==========================================
+# --- AUTHENTICATION & DATABASE ENDPOINTS ---
+# ==========================================
+
+@app.post("/signup")
+async def signup(user: UserCredentials):
+    """Registers a new user into MongoDB."""
+    existing_user = await users_collection.find_one({"email": user.email})
+    if existing_user:
+        return {"error": "Email already registered."}
+    
+    hashed_pw = get_password_hash(user.password)
+    new_user = {
+        "email": user.email,
+        "password": hashed_pw
+    }
+    await users_collection.insert_one(new_user)
+    return {"status": "success", "message": "User created successfully!"}
+
+@app.post("/login")
+async def login(user: UserCredentials):
+    """Verifies credentials and returns a JWT token."""
+    db_user = await users_collection.find_one({"email": user.email})
+    
+    if not db_user or not verify_password(user.password, db_user["password"]):
+        return {"error": "Invalid email or password."}
+    
+    # Generate the VIP Badge
+    access_token = create_access_token(data={"sub": user.email})
+    return {"status": "success", "access_token": access_token}
+
+@app.post("/save-analysis")
+async def save_analysis(data: SaveAnalysisRequest, current_user: str = Depends(verify_token)):
+    """Saves a resume review, locked to the currently logged-in user."""
+    try:
+        record = data.dict()
+        record["user_email"] = current_user # Attach the analysis to this specific user
+        
+        result = await history_collection.insert_one(record)
+        return {"status": "success", "message": "Analysis saved!"}
+    except Exception as e:
+        return {"error": f"Failed to save data: {str(e)}"}
+
+@app.get("/history")
+async def get_history(current_user: str = Depends(verify_token)):
+    """Fetches past analyses ONLY for the currently logged-in user."""
+    try:
+        history = []
+        cursor = history_collection.find({"user_email": current_user}).sort("_id", -1)
+        
+        async for document in cursor:
+            document["_id"] = str(document["_id"]) # MongoDB ObjectIds must be converted to strings
+            history.append(document)
+            
+        return {"status": "success", "data": history}
+    except Exception as e:
+        return {"error": f"Failed to fetch history: {str(e)}"}
 
 @app.post("/analyze")
 async def analyze_resume(

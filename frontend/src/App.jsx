@@ -1,8 +1,16 @@
-import React, { useState, useRef } from 'react';
-import { Upload, ChevronDown } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Upload, ChevronDown, User, LogOut, History, Clock } from 'lucide-react';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
 
 function App() {
+  // --- Auth & User State (NEW) ---
+  const [token, setToken] = useState(localStorage.getItem('token') || null);
+  const [userEmail, setUserEmail] = useState(localStorage.getItem('userEmail') || null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [isLoginMode, setIsLoginMode] = useState(true);
+  const [authForm, setAuthForm] = useState({ email: '', password: '' });
+  const [historyData, setHistoryData] = useState([]);
+
   // --- Form & File State ---
   const [file, setFile] = useState(null);
   const [role, setRole] = useState('');
@@ -37,6 +45,87 @@ function App() {
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [activeInterviewCategory, setActiveInterviewCategory] = useState('behavioral');
 
+  // --- Effects (NEW) ---
+  // Fetch history automatically when a user logs in
+  useEffect(() => {
+    if (token) {
+      fetchHistory();
+    }
+  }, [token]);
+
+  // --- AUTH HANDLERS (NEW) ---
+  const handleAuthSubmit = async (e) => {
+    e.preventDefault();
+    const endpoint = isLoginMode ? '/login' : '/signup';
+    
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(authForm)
+      });
+      const data = await res.json();
+      
+      if (data.error) throw new Error(data.error);
+
+      if (isLoginMode) {
+        setToken(data.access_token);
+        setUserEmail(authForm.email);
+        localStorage.setItem('token', data.access_token);
+        localStorage.setItem('userEmail', authForm.email);
+        setShowAuthModal(false);
+      } else {
+        alert("Sign up successful! Please log in.");
+        setIsLoginMode(true);
+      }
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    }
+  };
+
+  const handleLogout = () => {
+    setToken(null);
+    setUserEmail(null);
+    setHistoryData([]);
+    localStorage.removeItem('token');
+    localStorage.removeItem('userEmail');
+    setActiveTab('jobs');
+  };
+
+  const fetchHistory = async () => {
+    try {
+      const res = await fetch('/history', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.status === 'success') {
+        setHistoryData(data.data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch history", err);
+    }
+  };
+
+  const saveAnalysisToCloud = async (analysisData) => {
+    if (!token) return; // Only save if logged in
+    try {
+      await fetch('/save-analysis', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          target_role: role || 'General Analysis',
+          results_data: analysisData
+        })
+      });
+      fetchHistory(); // Refresh history tab
+    } catch (err) {
+      console.error("Failed to save to cloud", err);
+    }
+  };
+
   // --- Handlers ---
   const handleFileSelect = (selectedFile) => {
     if (selectedFile && selectedFile.type === 'application/pdf') {
@@ -51,6 +140,7 @@ function App() {
     
     setProgress({ active: true, pct: 10, label: 'Starting analysis...' });
     let currentResumeText = cachedResumeText;
+    let finalResults = { ...results }; // To store everything for the database
 
     try {
       // Stage 1: Analyze & Jobs
@@ -67,6 +157,8 @@ function App() {
       
       currentResumeText = analyzeData.resume_text;
       setCachedResumeText(currentResumeText);
+      finalResults.skills = analyzeData.skills;
+      finalResults.jobsData = analyzeData;
       setResults(prev => ({ ...prev, skills: analyzeData.skills, jobsData: analyzeData }));
 
       // Stage 2: Roast
@@ -77,6 +169,7 @@ function App() {
       roastFd.append('experience_level', experience);
       const roastRes = await fetch('/roast', { method: 'POST', body: roastFd });
       const roastData = await roastRes.json();
+      finalResults.roastData = roastData;
       setResults(prev => ({ ...prev, roastData }));
 
       // Stage 3: Interview Prep
@@ -87,9 +180,14 @@ function App() {
       interviewFd.append('experience_level', experience);
       const interviewRes = await fetch('/interview-prep', { method: 'POST', body: interviewFd });
       const interviewData = await interviewRes.json();
+      finalResults.interviewData = interviewData;
       setResults(prev => ({ ...prev, interviewData }));
 
       setProgress({ active: true, pct: 100, label: '✅ All analysis complete!' });
+      
+      // NEW: SAVE TO CLOUD DB
+      saveAnalysisToCloud(finalResults);
+
       setTimeout(() => setProgress(p => ({ ...p, active: false })), 1500);
 
     } catch (err) {
@@ -111,7 +209,14 @@ function App() {
       const res = await fetch('/match-jd', { method: 'POST', body: fd });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      setResults(prev => ({ ...prev, jdData: data }));
+      
+      // Update local state and immediately save the new JD Match data to the cloud
+      setResults(prev => {
+        const updatedResults = { ...prev, jdData: data };
+        saveAnalysisToCloud(updatedResults);
+        return updatedResults;
+      });
+      
     } catch (err) {
       alert("Match analysis failed.");
     } finally {
@@ -140,10 +245,38 @@ function App() {
   };
 
   return (
-    <div className="container" onClick={() => setIsExpMenuOpen(false)}>
-      <header>
-        <h1 id="main-title">Smart Resume <span>Analyzer</span></h1>
-        <p className="subtitle">AI-powered skill extraction, job matching & interview prep</p>
+    <div className="container relative" onClick={() => setIsExpMenuOpen(false)}>
+      
+      {/* --- HEADER WITH AUTH CONTROLS --- */}
+      {/* --- HEADER WITH AUTH CONTROLS --- */}
+      <header style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: '3rem', textAlign: 'center', minHeight: '80px' }}>
+        
+        {/* CENTERED TITLE */}
+        <div>
+          <h1 id="main-title" style={{ margin: 0 }}>Smart Resume <span>Analyzer</span></h1>
+          <p className="subtitle" style={{ margin: '0.5rem 0 0 0' }}>AI-powered skill extraction, job matching & interview prep</p>
+        </div>
+        
+        {/* RIGHT-ALIGNED AUTH CONTROLS */}
+        <div className="auth-controls" style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)' }}>
+          {!token ? (
+            <button 
+              className="btn btn-outline" 
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', borderColor: '#a855f7', color: '#a855f7', padding: '0.5rem 1rem', borderRadius: '8px', background: 'transparent', cursor: 'pointer' }} 
+              onClick={() => setShowAuthModal(true)}
+            >
+              <User size={18} /> Sign In
+            </button>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', background: 'rgba(255,255,255,0.05)', padding: '0.5rem 1rem', borderRadius: '50px', border: '1px solid rgba(255,255,255,0.1)' }}>
+              <span style={{ fontSize: '0.875rem', color: '#d1d5db' }}>👤 {userEmail?.split('@')[0]}</span>
+              <button onClick={handleLogout} style={{ color: '#f87171', background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }} title="Logout">
+                <LogOut size={18} />
+              </button>
+            </div>
+          )}
+        </div>
+        
       </header>
 
       <main>
@@ -211,29 +344,79 @@ function App() {
         </section>
 
         {/* --- RESULTS SECTION --- */}
-        {results.skills && (
+        {(results.skills || historyData.length > 0) && (
           <section id="skills-section">
-            <div className="card">
-              <h3>🛠️ Extracted Skills</h3>
-              <div className="tags">
-                {results.skills.map((s, i) => <span key={i} className="tag">{s}</span>)}
+            {results.skills && (
+              <div className="card">
+                <h3>🛠️ Extracted Skills</h3>
+                <div className="tags">
+                  {results.skills.map((s, i) => <span key={i} className="tag">{s}</span>)}
+                </div>
               </div>
-            </div>
+            )}
           </section>
         )}
 
-        {results.jobsData && (
+        {(results.jobsData || historyData.length > 0) && (
           <div id="tabs-container">
             <div className="tabs">
-              {['jobs', 'roast', 'jd-match', 'interview'].map(tab => (
-                <button key={tab} className={`tab ${activeTab === tab ? 'active' : ''}`} onClick={() => setActiveTab(tab)}>
-                  {tab === 'jobs' ? '💼 Job Matches' : tab === 'roast' ? '📝 Analysis' : tab === 'jd-match' ? '🎯 JD Matcher' : '🎯 Interview'}
+              {results.jobsData && (
+                <>
+                  <button className={`tab ${activeTab === 'jobs' ? 'active' : ''}`} onClick={() => setActiveTab('jobs')}>💼 Job Matches</button>
+                  <button className={`tab ${activeTab === 'roast' ? 'active' : ''}`} onClick={() => setActiveTab('roast')}>📝 Analysis</button>
+                  <button className={`tab ${activeTab === 'jd-match' ? 'active' : ''}`} onClick={() => setActiveTab('jd-match')}>🎯 JD Matcher</button>
+                  <button className={`tab ${activeTab === 'interview' ? 'active' : ''}`} onClick={() => setActiveTab('interview')}>🎯 Interview</button>
+                </>
+              )}
+              {token && (
+                <button className={`tab ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>
+                  <History size={16} className="inline mr-2 mb-1"/> My History
                 </button>
-              ))}
+              )}
             </div>
 
+            {/* TAB: HISTORY (NEW) */}
+            {activeTab === 'history' && (
+              <div className="tab-panel active">
+                <div className="card">
+                  <h3 style={{ marginBottom: '1rem' }}>📚 Past Analyses</h3>
+                  {historyData.length === 0 ? (
+                    <p style={{ color: '#9ca3af', textAlign: 'center', padding: '2rem 0' }}>No saved history yet. Analyze a resume to save it here!</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      {historyData.map((item, index) => (
+                        <div 
+                          key={item._id || index} 
+                          style={{ padding: '1rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', cursor: 'pointer', transition: 'border-color 0.3s' }}
+                          onClick={() => {
+                            setResults(item.results_data);
+                            setActiveTab('roast'); // Switch to roast tab to show data
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.5)'}
+                          onMouseLeave={(e) => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <h4 style={{ fontSize: '1.125rem', fontWeight: 'bold', color: 'white', margin: '0 0 0.25rem 0' }}>{item.target_role || 'General Analysis'}</h4>
+                              <p style={{ fontSize: '0.875rem', color: '#9ca3af', margin: 0 }}><Clock size={14} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'text-bottom' }} /> Saved to cloud</p>
+                            </div>
+                            {item.results_data?.roastData?.overall_score && (
+                              <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#10b981' }}>{item.results_data.roastData.overall_score}/100</div>
+                            )}
+                          </div>
+                          <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            {item.results_data?.skills?.slice(0, 5).map((s, i) => <span key={i} className="tag" style={{ fontSize: '0.75rem', padding: '2px 8px' }}>{s}</span>)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* TAB: JOBS */}
-            {activeTab === 'jobs' && (
+            {activeTab === 'jobs' && results.jobsData && (
               <div className="tab-panel active">
                 <div className="card">
                   <h3>💼 AI-Matched Job Listings</h3>
@@ -260,7 +443,6 @@ function App() {
               </div>
             )}
 
-            {/* TAB: ROAST (WITH RADAR CHART) */}
             {/* TAB: ROAST (WITH RADAR CHART) */}
             {activeTab === 'roast' && results.roastData && (
               <div className="tab-panel active">
@@ -483,6 +665,48 @@ function App() {
           </div>
         )}
       </main>
+
+      {/* --- AUTH MODAL OVERLAY (NEW) --- */}
+      {showAuthModal && (
+        <div 
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '1rem' }} 
+          onClick={() => setShowAuthModal(false)}
+        >
+          <div className="card" style={{ width: '100%', maxWidth: '400px', position: 'relative' }} onClick={e => e.stopPropagation()}>
+            <button 
+              style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'transparent', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: '1.25rem' }} 
+              onClick={() => setShowAuthModal(false)}
+            >
+              ✕
+            </button>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '1.5rem', textAlign: 'center' }}>
+              {isLoginMode ? 'Welcome Back' : 'Create Account'}
+            </h2>
+            
+            <form onSubmit={handleAuthSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.25rem', color: '#d1d5db' }}>Email Address</label>
+                <input type="email" required className="text-input" style={{ width: '100%' }} value={authForm.email} onChange={e => setAuthForm({...authForm, email: e.target.value})} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.25rem', color: '#d1d5db' }}>Password</label>
+                <input type="password" required className="text-input" style={{ width: '100%' }} value={authForm.password} onChange={e => setAuthForm({...authForm, password: e.target.value})} />
+              </div>
+              <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }}>
+                {isLoginMode ? 'Sign In' : 'Sign Up'}
+              </button>
+            </form>
+            
+            <p style={{ textAlign: 'center', marginTop: '1.5rem', color: '#9ca3af', fontSize: '0.875rem' }}>
+              {isLoginMode ? "Don't have an account? " : "Already have an account? "}
+              <button type="button" style={{ color: '#a855f7', background: 'transparent', border: 'none', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => setIsLoginMode(!isLoginMode)}>
+                {isLoginMode ? 'Sign Up' : 'Log In'}
+              </button>
+            </p>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

@@ -11,7 +11,11 @@ export default defineConfig({
       '/roast': 'http://localhost:8000',
       '/interview-prep': 'http://localhost:8000',
       '/evaluate-answer': 'http://localhost:8000',
-      '/match-jd': 'http://localhost:8000'
+      '/match-jd': 'http://localhost:8000',
+      '/signup': 'http://localhost:8000',
+      '/login': 'http://localhost:8000',
+      '/save-analysis': 'http://localhost:8000',
+      '/history': 'http://localhost:8000',
     }
   }
 })
