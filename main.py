@@ -10,6 +10,9 @@ from pydantic import BaseModel
 from typing import Dict, Any
 from fastapi import Depends
 from utils.auth import get_password_hash, verify_password, create_access_token, verify_token
+from fastapi import Response
+import json
+from utils.pdf_generator import create_ats_pdf
 
 from utils.pdf_parser import extract_text_from_pdf
 from utils.skill_extractor import extract_skills

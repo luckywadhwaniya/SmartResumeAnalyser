@@ -6,3 +6,4 @@ pdfplumber
 requests
 groq
 python-dotenv
+motor==3.7.1
